@@ -35,6 +35,8 @@ client.on('interactionCreate', async (i) => {
       await handleUndo(i);
     } else if (i.commandName === 'backfill') {
       await handleBackfill(i);
+    } else if (i.commandName === 'allstats') {
+      await handleAllStats(i);
     }
   } catch (e) {
     console.error(e);
@@ -224,6 +226,60 @@ async function handleUndo(i: ChatInputCommandInteraction) {
   await prisma.match.delete({ where: { id: last.id } });
   await i.reply('↩️ 마지막 경기 기록을 삭제했습니다.');
 }
+
+async function handleAllStats(i: ChatInputCommandInteraction) {
+  const PAGE_SIZE = 20;
+  const page = i.options.getInteger('page') ?? 1;
+  if (page < 1) {
+    await i.reply({ content: '페이지는 1 이상이어야 합니다.', ephemeral: true });
+    return;
+  }
+
+  // 모든 플레이어 + 엔트리 가져와서 집계
+  const players = await prisma.player.findMany({
+    include: { entries: { select: { isWin: true } } },
+  });
+
+  if (players.length === 0) {
+    await i.reply('데이터가 없습니다.');
+    return;
+  }
+
+  type Row = { userId: string; total: number; wins: number; losses: number; wr: number };
+  const rows: Row[] = players.map(p => {
+    const total = p.entries.length;
+    const wins = p.entries.filter((e: { isWin: boolean }) => e.isWin).length;
+    const losses = total - wins;
+    const wr = total ? wins / total : 0;
+    return { userId: p.userId, total, wins, losses, wr };
+  });
+
+  // 정렬: 판수 오름차순 → (동률이면 승수 내림차순 → 승률 내림차순)
+  rows.sort((a, b) => a.total - b.total || b.wins - a.wins || b.wr - a.wr);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const curPage = Math.min(page, totalPages);
+  const pageRows = rows.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
+
+  // 표 형태 문자열 (모노스페이스)
+  const pad = (s: string | number, n: number) => String(s).padStart(n, ' ');
+  const lines = [
+    `#  USER              TOT  WIN  LOSS  WR`,
+    `----------------------------------------`,
+    ...pageRows.map((r, idx) => {
+      const no = (idx + 1 + (curPage - 1) * PAGE_SIZE).toString().padStart(2, ' ');
+      const tag = `<@${r.userId}>`.padEnd(17, ' ');
+      const wrp = (Math.round(r.wr * 1000) / 10).toFixed(1) + '%';
+      return `${no}  ${tag} ${pad(r.total,3)}  ${pad(r.wins,3)}  ${pad(r.losses,4)}  ${pad(wrp,5)}`;
+    }),
+    `----------------------------------------`,
+    `페이지 ${curPage}/${totalPages} (총 ${rows.length}명, 페이지당 ${PAGE_SIZE})`,
+  ];
+
+  // 문자 수가 길 수 있으니 embed 없이 코드블록으로
+  await i.reply('```' + lines.join('\n') + '```');
+}
+
 
 client.login(process.env.DISCORD_TOKEN);
 

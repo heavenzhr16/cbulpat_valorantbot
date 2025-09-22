@@ -33,6 +33,7 @@ const commands = [
     .setName('leaderboard')
     .setDescription('승률/승수 랭킹')
     .addStringOption(o => o.setName('month').setDescription('YYYY-MM (미입력시 이번 달)')),
+    
   new SlashCommandBuilder()
     .setName('backfill')
     .setDescription('월별 기준 승/패 백필 (관리자/운영자용)')
@@ -40,7 +41,19 @@ const commands = [
     .addStringOption(o => o.setName('month').setDescription('YYYY-MM').setRequired(true))
     .addIntegerOption(o => o.setName('wins').setDescription('승').setRequired(true))
     .addIntegerOption(o => o.setName('losses').setDescription('패').setRequired(true)),
+
+    new SlashCommandBuilder()
+    .setName('allstats')
+    .setDescription('모든 플레이어 통계 (판수 오름차순)')
+    .addIntegerOption(o =>
+      o.setName('page')
+        .setDescription('페이지 번호 (기본 1)')
+        .setMinValue(1)
+        .setRequired(false)
+    ),
 ].map(c => c.toJSON());
+
+
 
 (async () => {
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
