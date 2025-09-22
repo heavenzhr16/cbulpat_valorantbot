@@ -14,6 +14,11 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const ALLOWED_TEXT_CHANNEL_ID = process.env.ALLOWED_TEXT_CHANNEL_ID ?? '';
 const DUPLICATE_WINDOW_MINUTES = parseInt(process.env.DUPLICATE_WINDOW_MINUTES ?? '15', 10);
 
+// ✅ 멘션 보이되 알림은 막기
+const NO_PING = {
+  allowedMentions: { parse: [] as ('users' | 'roles' | 'everyone')[], users: [] as string[], roles: [] as string[], repliedUser: false as const },
+};
+
 // YYYY-MM
 const getMonthString = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -40,7 +45,8 @@ client.on('interactionCreate', async (i) => {
     }
   } catch (e) {
     console.error(e);
-    if (i.isRepliable()) await i.reply({ content: '⚠️ 에러가 발생했습니다.', ephemeral: true });
+    if (i.isRepliable())
+      await i.reply({ content: '⚠️ 에러가 발생했습니다.', ephemeral: true, ...NO_PING });
   }
 });
 
@@ -54,7 +60,7 @@ async function upsertPlayer(userId: string, nickname?: string) {
 
 async function handleMatchResult(i: ChatInputCommandInteraction) {
   if (ALLOWED_TEXT_CHANNEL_ID && i.channelId !== ALLOWED_TEXT_CHANNEL_ID) {
-    await i.reply({ content: '⚠️ 이 명령은 지정된 채널에서만 사용할 수 있습니다.', ephemeral: true });
+    await i.reply({ content: '⚠️ 이 명령은 지정된 채널에서만 사용할 수 있습니다.', ephemeral: true, ...NO_PING });
     return;
   }
 
@@ -68,7 +74,7 @@ async function handleMatchResult(i: ChatInputCommandInteraction) {
 
   const ids = new Set([...aUsers, ...bUsers].map(u => u.id));
   if (ids.size !== 10) {
-    await i.reply({ content: '⚠️ 같은 사람이 중복되었거나 10명이 아닙니다.', ephemeral: true });
+    await i.reply({ content: '⚠️ 같은 사람이 중복되었거나 10명이 아닙니다.', ephemeral: true, ...NO_PING });
     return;
   }
 
@@ -86,7 +92,7 @@ async function handleMatchResult(i: ChatInputCommandInteraction) {
       m.entries.map((e: { Player: { userId: string } }) => e.Player.userId).sort().join(',') === participantKey
   );
   if (isDuplicate) {
-    await i.reply({ content: `⚠️ 같은 10인 구성의 경기가 최근 ${DUPLICATE_WINDOW_MINUTES}분 내에 이미 기록되었습니다.`, ephemeral: true });
+    await i.reply({ content: `⚠️ 같은 10인 구성의 경기가 최근 ${DUPLICATE_WINDOW_MINUTES}분 내에 이미 기록되었습니다.`, ephemeral: true, ...NO_PING });
     return;
   }
 
@@ -118,7 +124,7 @@ async function handleMatchResult(i: ChatInputCommandInteraction) {
       { name: '팀 B', value: bUsers.map(u => `<@${u.id}>`).join(' ') },
     )
     .setTimestamp(new Date());
-  await i.reply({ embeds: [embed] });
+  await i.reply({ embeds: [embed], ...NO_PING });
 }
 
 async function handleProfile(i: ChatInputCommandInteraction) {
@@ -126,7 +132,7 @@ async function handleProfile(i: ChatInputCommandInteraction) {
   const month = i.options.getString('month') ?? getMonthString();
 
   const p = await prisma.player.findUnique({ where: { userId: user.id } });
-  if (!p) { await i.reply({ content: `📄 <@${user.id}> 전적 없음`, ephemeral: true }); return; }
+  if (!p) { await i.reply({ content: `📄 <@${user.id}> 전적 없음`, ephemeral: true, ...NO_PING }); return; }
 
   // 월별 엔트리
   const entries = await prisma.entry.findMany({
@@ -144,7 +150,7 @@ async function handleProfile(i: ChatInputCommandInteraction) {
   const losses = (base?.losses ?? 0) + lossesFromMatches;
   const wr = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 1000) / 10 : 0;
 
-  await i.reply(`📊 [${month}] <@${user.id}> — **${wins}승 ${losses}패** (승률 **${wr}%**)`);
+  await i.reply({ content: `📊 [${month}] <@${user.id}> — **${wins}승 ${losses}패** (승률 **${wr}%**)`, ...NO_PING });
 }
 
 async function handleLeaderboard(i: ChatInputCommandInteraction) {
@@ -183,12 +189,15 @@ async function handleLeaderboard(i: ChatInputCommandInteraction) {
     .sort((a,b) => b.wr - a.wr || b.wins - a.wins)
     .slice(0, 10);
 
-  if (rows.length === 0) { await i.reply(`🏷️ [${month}] 랭킹에 표시할 전적이 부족합니다.`); return; }
+  if (rows.length === 0) {
+    await i.reply({ content: `🏷️ [${month}] 랭킹에 표시할 전적이 부족합니다.`, ...NO_PING });
+    return;
+  }
 
   const lines = rows.map((r, idx) =>
     `**${idx+1}.** <@${r.userId}> — ${r.wins}승 / ${r.total}전 (승률 ${Math.round(r.wr*1000)/10}%)`
   );
-  await i.reply(`🏆 **Leaderboard — ${month}**\n${lines.join('\n')}`);
+  await i.reply({ content: `🏆 **Leaderboard — ${month}**\n${lines.join('\n')}`, ...NO_PING });
 }
 
 async function handleBackfill(i: ChatInputCommandInteraction) {
@@ -201,11 +210,11 @@ async function handleBackfill(i: ChatInputCommandInteraction) {
 
   // 유효성
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-    await i.reply({ content: '⚠️ month 형식은 YYYY-MM 이어야 합니다. 예: 2025-09', ephemeral: true });
+    await i.reply({ content: '⚠️ month 형식은 YYYY-MM 이어야 합니다. 예: 2025-09', ephemeral: true, ...NO_PING });
     return;
   }
   if (wins < 0 || losses < 0) {
-    await i.reply({ content: '⚠️ wins/losses는 0 이상이어야 합니다.', ephemeral: true });
+    await i.reply({ content: '⚠️ wins/losses는 0 이상이어야 합니다.', ephemeral: true, ...NO_PING });
     return;
   }
 
@@ -216,22 +225,22 @@ async function handleBackfill(i: ChatInputCommandInteraction) {
     create: { playerId: p.id, month, wins, losses }
   });
 
-  await i.reply(`🧾 [${month}] <@${user.id}> 기준치 저장 — **${wins}승 ${losses}패**`);
+  await i.reply({ content: `🧾 [${month}] <@${user.id}> 기준치 저장 — **${wins}승 ${losses}패**`, ...NO_PING });
 }
 
 async function handleUndo(i: ChatInputCommandInteraction) {
   const last = await prisma.match.findFirst({ orderBy: { id: 'desc' } });
-  if (!last) { await i.reply({ content: '되돌릴 경기 없음.', ephemeral: true }); return; }
+  if (!last) { await i.reply({ content: '되돌릴 경기 없음.', ephemeral: true, ...NO_PING }); return; }
   await prisma.entry.deleteMany({ where: { matchId: last.id } });
   await prisma.match.delete({ where: { id: last.id } });
-  await i.reply('↩️ 마지막 경기 기록을 삭제했습니다.');
+  await i.reply({ content: '↩️ 마지막 경기 기록을 삭제했습니다.', ...NO_PING });
 }
 
 async function handleAllStats(i: ChatInputCommandInteraction) {
   const PAGE_SIZE = 20;
   const page = i.options.getInteger('page') ?? 1;
   if (page < 1) {
-    await i.reply({ content: '페이지는 1 이상이어야 합니다.', ephemeral: true });
+    await i.reply({ content: '페이지는 1 이상이어야 합니다.', ephemeral: true, ...NO_PING });
     return;
   }
 
@@ -241,7 +250,7 @@ async function handleAllStats(i: ChatInputCommandInteraction) {
   });
 
   if (players.length === 0) {
-    await i.reply('데이터가 없습니다.');
+    await i.reply({ content: '데이터가 없습니다.', ...NO_PING });
     return;
   }
 
@@ -276,16 +285,14 @@ async function handleAllStats(i: ChatInputCommandInteraction) {
     `페이지 ${curPage}/${totalPages} (총 ${rows.length}명, 페이지당 ${PAGE_SIZE})`,
   ];
 
-  // 문자 수가 길 수 있으니 embed 없이 코드블록으로
-  await i.reply('```' + lines.join('\n') + '```');
+  await i.reply({ content: '```' + lines.join('\n') + '```', ...NO_PING });
 }
-
 
 client.login(process.env.DISCORD_TOKEN);
 
+// --- Render Web Service healthcheck ---
 import express from 'express';
 const port = process.env.PORT || 3000;
 const app = express();
 app.get('/', (_req: express.Request, res: express.Response) => res.send('Bot is running'));
-
 app.listen(port, () => console.log(`🌐 Web server on :${port}`));
