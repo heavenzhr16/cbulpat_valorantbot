@@ -70,7 +70,7 @@ async function handleMatchResult(i) {
         where: { createdAt: { gte: since } },
         include: { entries: { include: { Player: true } } }
     });
-    const isDuplicate = recentMatches.some(m => m.entries.map(e => e.Player.userId).sort().join(',') === participantKey);
+    const isDuplicate = recentMatches.some((m) => m.entries.map((e) => e.Player.userId).sort().join(',') === participantKey);
     if (isDuplicate) {
         await i.reply({ content: `⚠️ 같은 10인 구성의 경기가 최근 ${DUPLICATE_WINDOW_MINUTES}분 내에 이미 기록되었습니다.`, ephemeral: true });
         return;
@@ -113,7 +113,7 @@ async function handleProfile(i) {
         where: { playerId: p.id, Match: { month } },
         include: { Match: true }
     });
-    const winsFromMatches = entries.filter(e => e.isWin).length;
+    const winsFromMatches = entries.filter((e) => e.isWin).length;
     const lossesFromMatches = entries.length - winsFromMatches;
     // 월별 기준치(백필)
     const base = await prisma.monthlyBaseline.findUnique({

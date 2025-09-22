@@ -18,7 +18,9 @@ const DUPLICATE_WINDOW_MINUTES = parseInt(process.env.DUPLICATE_WINDOW_MINUTES ?
 const getMonthString = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-client.once('ready', () => console.log(`✅ Logged in as ${client.user?.tag}`));
+client.once(Events.ClientReady, () =>
+  console.log(`✅ Logged in as ${client.user?.tag}`)
+);
 
 client.on('interactionCreate', async (i) => {
   if (!i.isChatInputCommand()) return;
@@ -77,8 +79,9 @@ async function handleMatchResult(i: ChatInputCommandInteraction) {
     where: { createdAt: { gte: since } },
     include: { entries: { include: { Player: true } } }
   });
-  const isDuplicate = recentMatches.some(m =>
-    m.entries.map(e => e.Player.userId).sort().join(',') === participantKey
+  const isDuplicate = recentMatches.some(
+    (m: { entries: { Player: { userId: string } }[] }) =>
+      m.entries.map((e: { Player: { userId: string } }) => e.Player.userId).sort().join(',') === participantKey
   );
   if (isDuplicate) {
     await i.reply({ content: `⚠️ 같은 10인 구성의 경기가 최근 ${DUPLICATE_WINDOW_MINUTES}분 내에 이미 기록되었습니다.`, ephemeral: true });
@@ -128,7 +131,7 @@ async function handleProfile(i: ChatInputCommandInteraction) {
     where: { playerId: p.id, Match: { month } },
     include: { Match: true }
   });
-  const winsFromMatches = entries.filter(e => e.isWin).length;
+  const winsFromMatches = entries.filter((e: { isWin: boolean }) => e.isWin).length;
   const lossesFromMatches = entries.length - winsFromMatches;
 
   // 월별 기준치(백필)
@@ -227,5 +230,6 @@ client.login(process.env.DISCORD_TOKEN);
 import express from 'express';
 const port = process.env.PORT || 3000;
 const app = express();
-app.get('/', (_req, res) => res.send('Bot is running'));
+app.get('/', (_req: express.Request, res: express.Response) => res.send('Bot is running'));
+
 app.listen(port, () => console.log(`🌐 Web server on :${port}`));
