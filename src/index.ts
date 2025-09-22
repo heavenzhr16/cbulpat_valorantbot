@@ -239,28 +239,57 @@ async function handleUndo(i: ChatInputCommandInteraction) {
 async function handleAllStats(i: ChatInputCommandInteraction) {
   const PAGE_SIZE = 20;
   const page = i.options.getInteger('page') ?? 1;
+  const month = i.options.getString('month') ?? getMonthString(); // 선택: 월 지정 (등록에 옵션 추가하면 사용 가능)
   if (page < 1) {
     await i.reply({ content: '페이지는 1 이상이어야 합니다.', ephemeral: true, ...NO_PING });
     return;
   }
 
-  // 모든 플레이어 + 엔트리 가져와서 집계
-  const players = await prisma.player.findMany({
-    include: { entries: { select: { isWin: true } } },
+  // 1) 이번 달 엔트리 전부 가져와서 집계
+  const entries = await prisma.entry.findMany({
+    where: { Match: { month } },
+    include: { Player: true },
   });
 
-  if (players.length === 0) {
-    await i.reply({ content: '데이터가 없습니다.', ...NO_PING });
-    return;
+  // 2) 이번 달 백필(기준치) 전부
+  const baselines = await prisma.monthlyBaseline.findMany({ where: { month } });
+
+  // 3) playerId -> userId 매핑 (백필은 playerId만 있어서)
+  const players = await prisma.player.findMany({ select: { id: true, userId: true } });
+  const idToUserId = new Map(players.map(p => [p.id, p.userId]));
+
+  // 4) userId별로 합산 (엔트리 + 백필)
+  const byUserId = new Map<string, { total: number; wins: number }>();
+
+  for (const e of entries) {
+    const uid = e.Player.userId;
+    const cur = byUserId.get(uid) ?? { total: 0, wins: 0 };
+    cur.total += 1;
+    if (e.isWin) cur.wins += 1;
+    byUserId.set(uid, cur);
+  }
+
+  for (const b of baselines) {
+    const uid = idToUserId.get(b.playerId);
+    if (!uid) continue;
+    const cur = byUserId.get(uid) ?? { total: 0, wins: 0 };
+    cur.total += b.wins + b.losses;
+    cur.wins  += b.wins;
+    byUserId.set(uid, cur);
+  }
+
+  // 5) 모든 플레이어를 표시하고 싶다면, 기록 없는 사람도 0으로 포함
+  for (const p of players) {
+    if (!byUserId.has(p.userId)) byUserId.set(p.userId, { total: 0, wins: 0 });
   }
 
   type Row = { userId: string; total: number; wins: number; losses: number; wr: number };
-  const rows: Row[] = players.map(p => {
-    const total = p.entries.length;
-    const wins = p.entries.filter((e: { isWin: boolean }) => e.isWin).length;
+  const rows: Row[] = [...byUserId.entries()].map(([userId, v]) => {
+    const total = v.total;
+    const wins = v.wins;
     const losses = total - wins;
     const wr = total ? wins / total : 0;
-    return { userId: p.userId, total, wins, losses, wr };
+    return { userId, total, wins, losses, wr };
   });
 
   // 정렬: 판수 오름차순 → (동률이면 승수 내림차순 → 승률 내림차순)
@@ -270,23 +299,22 @@ async function handleAllStats(i: ChatInputCommandInteraction) {
   const curPage = Math.min(page, totalPages);
   const pageRows = rows.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
 
-  // 표 형태 문자열 (모노스페이스)
-  const pad = (s: string | number, n: number) => String(s).padStart(n, ' ');
-  const lines = [
-    `#  USER              TOT  WIN  LOSS  WR`,
-    `----------------------------------------`,
-    ...pageRows.map((r, idx) => {
-      const no = (idx + 1 + (curPage - 1) * PAGE_SIZE).toString().padStart(2, ' ');
-      const tag = `<@${r.userId}>`.padEnd(17, ' ');
-      const wrp = (Math.round(r.wr * 1000) / 10).toFixed(1) + '%';
-      return `${no}  ${tag} ${pad(r.total,3)}  ${pad(r.wins,3)}  ${pad(r.losses,4)}  ${pad(wrp,5)}`;
-    }),
-    `----------------------------------------`,
-    `페이지 ${curPage}/${totalPages} (총 ${rows.length}명, 페이지당 ${PAGE_SIZE})`,
-  ];
+  const fmt = (n: number) => (Math.round(n * 10) / 10).toFixed(1);
+  const lines = pageRows.map((r, idx) => {
+    const no = idx + 1 + (curPage - 1) * PAGE_SIZE;
+    const wrp = fmt(r.wr * 100) + '%';
+    return `**${no}.** <@${r.userId}> — ${r.wins}승 / ${r.total}전 (승률 ${wrp})`;
+  });
 
-  await i.reply({ content: '```' + lines.join('\n') + '```', ...NO_PING });
+  await i.reply({
+    content:
+      `📒 **All Stats — ${month}** (판수 오름차순)\n` +
+      (lines.length ? lines.join('\n') : '표시할 데이터가 없습니다.') +
+      `\n\n페이지 ${curPage}/${totalPages} (총 ${rows.length}명, 페이지당 ${PAGE_SIZE})`,
+    ...NO_PING, // ← 멘션 보이지만 알림은 차단
+  });
 }
+
 
 client.login(process.env.DISCORD_TOKEN);
 
