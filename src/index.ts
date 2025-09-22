@@ -223,3 +223,9 @@ async function handleUndo(i: ChatInputCommandInteraction) {
 }
 
 client.login(process.env.DISCORD_TOKEN);
+
+import express from 'express';
+const port = process.env.PORT || 3000;
+const app = express();
+app.get('/', (_req, res) => res.send('Bot is running'));
+app.listen(port, () => console.log(`🌐 Web server on :${port}`));
