@@ -10,35 +10,35 @@ generator client {
 }
 
 model Player {
-  id        Int       @id @default(autoincrement())
-  userId    String    @unique          // Discord user id
-  nickname  String?
-  createdAt DateTime  @default(now())
-
-  entries   Entry[]
-  baselines MonthlyBaseline[]
+  id           Int               @id @default(autoincrement())
+  userId       String            @unique
+  nickname     String?
+  createdAt    DateTime          @default(now())
+  entries      Entry[]
+  baselines    MonthlyBaseline[]
+  monthlyStats MonthlyStat[]
 }
 
 model Match {
-  id        Int       @id @default(autoincrement())
-  createdAt DateTime  @default(now())
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
   winner    String
   score     String?
-  season    String?   // (안 쓰면 비워둬도 됨)
-  month     String    // "YYYY-MM" ex) 2025-09
+  season    String? // (안 쓰면 비워둬도 됨)
+  month     String // "YYYY-MM" ex) 2025-09
 
-  entries   Entry[]
+  entries Entry[]
 }
 
 model Entry {
-  id        Int      @id @default(autoincrement())
-  matchId   Int
-  playerId  Int
-  team      String   // "A" | "B"
-  isWin     Boolean
+  id       Int     @id @default(autoincrement())
+  matchId  Int
+  playerId Int
+  team     String // "A" | "B"
+  isWin    Boolean
 
-  Match     Match    @relation(fields: [matchId], references: [id])
-  Player    Player   @relation(fields: [playerId], references: [id])
+  Match  Match  @relation(fields: [matchId], references: [id])
+  Player Player @relation(fields: [playerId], references: [id])
 
   @@index([playerId])
   @@index([matchId])
@@ -47,11 +47,27 @@ model Entry {
 model MonthlyBaseline {
   id       Int    @id @default(autoincrement())
   playerId Int
-  month    String   // "YYYY-MM"
+  month    String // "YYYY-MM"
   wins     Int    @default(0)
   losses   Int    @default(0)
 
-  Player   Player @relation(fields: [playerId], references: [id])
+  Player Player @relation(fields: [playerId], references: [id])
 
   @@unique([playerId, month])
+}
+
+model MonthlyStat {
+  id        Int      @id @default(autoincrement())
+  playerId  Int
+  month     String // YYYY-MM
+  wins      Int      @default(0)
+  losses    Int      @default(0)
+  kd        Float? // ← KD (예: 1.23)
+  acs       Int? // ← ACS (예: 245)
+  updatedAt DateTime @updatedAt
+
+  Player Player @relation(fields: [playerId], references: [id])
+
+  @@unique([playerId, month])
+  @@index([month])
 }
