@@ -23,9 +23,26 @@ const NO_PING = {
 const getMonthString = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-client.once(Events.ClientReady, () =>
-  console.log(`✅ Logged in as ${client.user?.tag}`)
-);
+client.once(Events.ClientReady, async () => {
+  console.log(`✅ Logged in as ${client.user?.tag}`);
+
+  // Prisma 연결 예열
+  try {
+    await prisma.$connect();
+    console.log('✅ Prisma connected');
+  } catch (e) {
+    console.error('Prisma connect error:', e);
+  }
+
+  // ✅ 5분마다 DB 핑 (Neon 콜드스타트 지연 완화)
+  setInterval(async () => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+    } catch (e) {
+      console.error('DB ping error:', e);
+    }
+  }, 5 * 60 * 1000);
+});
 
 client.on('interactionCreate', async (i) => {
   if (!i.isChatInputCommand()) return;
